@@ -5,194 +5,154 @@ import (
 	"testing"
 )
 
-func TestErrorResponses(t *testing.T) {
-	tests := []struct {
-		name     string
-		response *ErrorResponse
-		wantCode string
-	}{
-		{
-			name: "Bad Request - BFF",
-			response: BadRequest(
-				BNYBBadRequest,
-				"Invalid request body",
-				"req-111-222",
-				ErrorIssue{Service: "Web Application", Issue: "Request body malformed"},
-			),
-			wantCode: "B-NYB-400",
-		},
-		{
-			name: "Unauthorized - Auth Service",
-			response: Unauthorized(
-				CAUTUnauthorized,
-				"Token expired",
-				"req-333-444",
-				ErrorIssue{Service: "Auth Service", Issue: "JWT token has expired"},
-			),
-			wantCode: "C-AUT-401",
-		},
-		{
-			name: "Not Found - Listing Service",
-			response: NotFound(
-				CLSTNotFound,
-				"Listing not found",
-				"req-555-666",
-				ErrorIssue{Service: "Listing Service", Issue: "Listing ID not found"},
-			),
-			wantCode: "C-LST-404",
-		},
-		{
-			name: "Bad Gateway - Integration Service",
-			response: BadGateway(
-				XINTBadGateway,
-				"External API error",
-				"req-777-888",
-				ErrorIssue{Service: "Integration Service", Issue: "SMS API returned an error"},
-			),
-			wantCode: "X-INT-502",
-		},
-		{
-			name: "Payload Too Large - Media Service",
-			response: PayloadTooLarge(
-				CMEDPayloadTooLarge,
-				"File too large",
-				"req-999-000",
-				ErrorIssue{Service: "Media Service", Issue: "File exceeds 10MB limit"},
-			),
-			wantCode: "C-MED-413",
-		},
-		{
-			name: "Gateway Timeout - BFF",
-			response: GatewayTimeout(
-				BNYBGatewayTimeout,
-				"Upstream timeout",
-				"req-aaa-bbb",
-				ErrorIssue{Service: "Web Application", Issue: "Upstream service timeout"},
-			),
-			wantCode: "B-NYB-504",
-		},
+func TestSuccess(t *testing.T) {
+	resp := Success(map[string]string{"name": "test"})
+	if !resp.Success || !resp.Status {
+		t.Error("Success and Status should be true")
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Check success field is false
-			if tt.response.Success != false {
-				t.Errorf("Expected success to be false, got %v", tt.response.Success)
-			}
-
-			// Check error code
-			if tt.response.Error.Code != tt.wantCode {
-				t.Errorf("Expected code %s, got %s", tt.wantCode, tt.response.Error.Code)
-			}
-
-			// Check error has traceId
-			if tt.response.Error.TraceID == "" {
-				t.Error("Expected traceId to be set")
-			}
-
-			// Check error has timestamp
-			if tt.response.Error.Timestamp == "" {
-				t.Error("Expected timestamp to be set")
-			}
-
-			// Check error has details
-			if len(tt.response.Error.Details) == 0 {
-				t.Error("Expected details to be set")
-			}
-
-			// Marshal to JSON to verify structure
-			jsonData, err := json.MarshalIndent(tt.response, "", "  ")
-			if err != nil {
-				t.Fatalf("Failed to marshal response: %v", err)
-			}
-
-			t.Logf("Response JSON:\n%s\n", string(jsonData))
-		})
+	if resp.Data == nil {
+		t.Error("Data should not be nil")
 	}
 }
 
-func TestErrorWithMultipleDetails(t *testing.T) {
-	response := ValidationFailed(
-		BNYBValidationFailed,
-		"Validation failed",
-		"req-multi-123",
-		ErrorIssue{Service: "Web Application", Issue: "Email format invalid"},
-		ErrorIssue{Service: "Web Application", Issue: "Password too short"},
-		ErrorIssue{Service: "Web Application", Issue: "Username already exists"},
+func TestSuccessWithMessage(t *testing.T) {
+	resp := SuccessWithMessage("data", "get success")
+	if resp.Message != "get success" {
+		t.Errorf("expected 'get success', got '%s'", resp.Message)
+	}
+	if !resp.Success || !resp.Status {
+		t.Error("Success and Status should be true")
+	}
+}
+
+func TestList(t *testing.T) {
+	items := []string{"a", "b"}
+	pagination := NewPagination(100, 1, 10)
+	resp := List(items, pagination, "get success")
+	if !resp.Success || !resp.Status {
+		t.Error("Success should be true")
+	}
+	if resp.Message != "get success" {
+		t.Errorf("expected 'get success', got '%s'", resp.Message)
+	}
+}
+
+func TestError(t *testing.T) {
+	resp := Error(CLSTBadRequest, "invalid input", "trace-123")
+	if resp.Success || resp.Status {
+		t.Error("Success and Status should be false")
+	}
+	if resp.Error.Code != "C-LST-400" {
+		t.Errorf("expected C-LST-400, got %s", resp.Error.Code)
+	}
+	if resp.Error.TraceID != "trace-123" {
+		t.Errorf("expected trace-123, got %s", resp.Error.TraceID)
+	}
+	if resp.Error.Timestamp == "" {
+		t.Error("Timestamp should be set")
+	}
+	// backward compat flat fields
+	if resp.Message != "invalid input" {
+		t.Errorf("flat message should be 'invalid input', got '%s'", resp.Message)
+	}
+	if resp.TraceID != "trace-123" {
+		t.Errorf("flat traceId should be 'trace-123', got '%s'", resp.TraceID)
+	}
+}
+
+func TestErrorWithDetails(t *testing.T) {
+	resp := Error(CLSTInternal, "server error", "trace-456",
+		ErrorIssue{Service: "Listing Service", Issue: "database timeout"},
 	)
-
-	if len(response.Error.Details) != 3 {
-		t.Errorf("Expected 3 details, got %d", len(response.Error.Details))
+	if len(resp.Error.Details) != 1 {
+		t.Errorf("expected 1 detail, got %d", len(resp.Error.Details))
 	}
-
-	jsonData, err := json.MarshalIndent(response, "", "  ")
-	if err != nil {
-		t.Fatalf("Failed to marshal response: %v", err)
+	if resp.Error.Details[0].Service != "Listing Service" {
+		t.Errorf("expected 'Listing Service', got '%s'", resp.Error.Details[0].Service)
 	}
-
-	t.Logf("Validation Error Response:\n%s\n", string(jsonData))
 }
 
-func TestErrorWithoutDetails(t *testing.T) {
-	response := InternalServerError(
-		CLSTInternalServerError,
-		"Internal server error",
-		"req-no-details",
-	)
-
-	if response.Error.Details != nil && len(response.Error.Details) > 0 {
-		t.Error("Expected details to be empty")
+func TestNewPagination(t *testing.T) {
+	p := NewPagination(100, 1, 10)
+	if p.TotalPages != 10 {
+		t.Errorf("expected 10 pages, got %d", p.TotalPages)
 	}
 
-	jsonData, err := json.MarshalIndent(response, "", "  ")
-	if err != nil {
-		t.Fatalf("Failed to marshal response: %v", err)
+	p2 := NewPagination(101, 1, 10)
+	if p2.TotalPages != 11 {
+		t.Errorf("expected 11 pages, got %d", p2.TotalPages)
 	}
 
-	t.Logf("Error Without Details:\n%s\n", string(jsonData))
+	p3 := NewPagination(0, 1, 10)
+	if p3.TotalPages != 0 {
+		t.Errorf("expected 0 pages, got %d", p3.TotalPages)
+	}
 }
 
-func TestAllServiceErrorCodes(t *testing.T) {
-	services := map[string][]string{
-		"BFF": {
-			BNYBBadRequest, BNYBUnauthorized, BNYBForbidden,
-			BNYBNotFound, BNYBConflict, BNYBValidationFailed,
-			BNYBTooManyRequests, BNYBInternalServerError,
-			BNYBServiceUnavailable, BNYBGatewayTimeout,
-		},
-		"Auth": {
-			CAUTBadRequest, CAUTUnauthorized, CAUTForbidden,
-			CAUTNotFound, CAUTConflict, CAUTValidationFailed,
-			CAUTTooManyRequests, CAUTInternalServerError,
-			CAUTServiceUnavailable,
-		},
-		"Listing": {
-			CLSTBadRequest, CLSTUnauthorized, CLSTForbidden,
-			CLSTNotFound, CLSTConflict, CLSTValidationFailed,
-			CLSTTooManyRequests, CLSTInternalServerError,
-			CLSTServiceUnavailable,
-		},
-		"Media": {
-			CMEDBadRequest, CMEDUnauthorized, CMEDForbidden,
-			CMEDNotFound, CMEDConflict, CMEDPayloadTooLarge,
-			CMEDValidationFailed, CMEDTooManyRequests,
-			CMEDInternalServerError, CMEDServiceUnavailable,
-		},
-		"Integration": {
-			XINTBadRequest, XINTUnauthorized, XINTForbidden,
-			XINTNotFound, XINTValidationFailed, XINTTooManyRequests,
-			XINTInternalServerError, XINTBadGateway,
-			XINTServiceUnavailable, XINTGatewayTimeout,
-		},
+func TestErrorJSON_BackwardCompat(t *testing.T) {
+	resp := Error(CLSTNotFound, "not found", "t-1")
+	b, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]interface{}
+	json.Unmarshal(b, &m)
+
+	// New format
+	if m["success"] != false {
+		t.Error("success should be false")
+	}
+	errObj := m["error"].(map[string]interface{})
+	if errObj["code"] != "C-LST-404" {
+		t.Errorf("error.code should be C-LST-404, got %v", errObj["code"])
 	}
 
-	t.Log("Testing all service error codes:")
-	for service, codes := range services {
-		t.Logf("\n%s Service - %d error codes defined", service, len(codes))
-		for _, code := range codes {
-			if code == "" {
-				t.Errorf("Empty error code in %s service", service)
-			}
+	// Backward compat flat fields
+	if m["status"] != false {
+		t.Error("status should be false (backward compat)")
+	}
+	if m["message"] != "not found" {
+		t.Errorf("flat message should be 'not found', got '%v'", m["message"])
+	}
+}
+
+func TestSuccessJSON_BackwardCompat(t *testing.T) {
+	resp := SuccessWithMessage(map[string]int{"count": 5}, "ok")
+	b, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]interface{}
+	json.Unmarshal(b, &m)
+
+	if m["success"] != true {
+		t.Error("success should be true")
+	}
+	if m["status"] != true {
+		t.Error("status should be true (backward compat)")
+	}
+	if m["message"] != "ok" {
+		t.Errorf("message should be 'ok', got '%v'", m["message"])
+	}
+}
+
+func TestAllErrorCodes(t *testing.T) {
+	codes := []string{
+		BNYBBadRequest, BNYBUnauthorized, BNYBForbidden, BNYBNotFound, BNYBInternal, BNYBGatewayTimeout,
+		CAUTBadRequest, CAUTUnauthorized, CAUTForbidden, CAUTNotFound, CAUTInternal,
+		CLSTBadRequest, CLSTUnauthorized, CLSTNotFound, CLSTConflict, CLSTValidation, CLSTInternal,
+		CMEDBadRequest, CMEDNotFound, CMEDPayloadTooLarge, CMEDInternal,
+		CSRCBadRequest, CSRCInternal,
+		CNOTInternal,
+		CRPTBadRequest, CRPTNotFound, CRPTInternal,
+		XINTBadGateway, XINTUnavailable, XINTGatewayTimeout,
+		DWRKBadRequest, DWRKInternal,
+	}
+
+	for _, code := range codes {
+		if code == "" {
+			t.Error("Empty error code found")
 		}
 	}
+	t.Logf("Verified %d error codes", len(codes))
 }

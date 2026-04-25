@@ -4,25 +4,34 @@ import (
 	"time"
 )
 
+// ============================================================
+// Response Types
+// ============================================================
+
 // SuccessResponse represents a successful API response
 type SuccessResponse struct {
 	Success bool        `json:"success"`
+	Status  bool        `json:"status"` // backward compat
 	Data    interface{} `json:"data"`
+	Message string      `json:"message,omitempty"` // backward compat
 }
 
 // ErrorResponse represents an error API response
 type ErrorResponse struct {
 	Success bool         `json:"success"`
+	Status  bool         `json:"status"`  // backward compat
 	Error   *ErrorDetail `json:"error"`
+	Message string       `json:"message"` // backward compat flat
+	TraceID string       `json:"traceId,omitempty"` // backward compat flat
 }
 
 // ErrorDetail contains detailed error information
 type ErrorDetail struct {
-	Code      string          `json:"code"`
-	Message   string          `json:"message"`
-	Details   []ErrorIssue    `json:"details,omitempty"`
-	TraceID   string          `json:"traceId"`
-	Timestamp string          `json:"timestamp"`
+	Code      string       `json:"code"`
+	Message   string       `json:"message"`
+	Details   []ErrorIssue `json:"details,omitempty"`
+	TraceID   string       `json:"traceId"`
+	Timestamp string       `json:"timestamp"`
 }
 
 // ErrorIssue represents a specific error issue
@@ -39,47 +48,46 @@ type Pagination struct {
 	TotalPages int `json:"total_pages"`
 }
 
-// PaginatedData represents paginated list data
-type PaginatedData struct {
-	Items      interface{} `json:"items"`
-	Pagination Pagination  `json:"pagination"`
+// ListResponse represents a paginated list response (backward compat)
+type ListResponse struct {
+	Success    bool        `json:"success"`
+	Status     bool        `json:"status"`  // backward compat
+	Message    string      `json:"message,omitempty"`
+	Data       interface{} `json:"data"`
+	Pagination interface{} `json:"pagination,omitempty"` // backward compat flat
 }
 
-// AsyncJobData represents async job response data
-type AsyncJobData struct {
-	JobID            string `json:"job_id"`
-	Status           string `json:"status"`
-	EstimatedSeconds int    `json:"estimated_seconds,omitempty"`
-}
+// ============================================================
+// Constructor Functions
+// ============================================================
 
-// Success creates a successful response with data
+// Success creates a successful response
 func Success(data interface{}) *SuccessResponse {
 	return &SuccessResponse{
 		Success: true,
+		Status:  true,
 		Data:    data,
 	}
 }
 
-// SuccessList creates a successful paginated list response
-func SuccessList(items interface{}, pagination Pagination) *SuccessResponse {
+// SuccessWithMessage creates a successful response with message
+func SuccessWithMessage(data interface{}, message string) *SuccessResponse {
 	return &SuccessResponse{
 		Success: true,
-		Data: PaginatedData{
-			Items:      items,
-			Pagination: pagination,
-		},
+		Status:  true,
+		Data:    data,
+		Message: message,
 	}
 }
 
-// SuccessAsync creates a successful async job response
-func SuccessAsync(jobID, status string, estimatedSeconds int) *SuccessResponse {
-	return &SuccessResponse{
-		Success: true,
-		Data: AsyncJobData{
-			JobID:            jobID,
-			Status:           status,
-			EstimatedSeconds: estimatedSeconds,
-		},
+// List creates a paginated list response (backward compat — pagination at top level)
+func List(data interface{}, pagination interface{}, message string) *ListResponse {
+	return &ListResponse{
+		Success:    true,
+		Status:     true,
+		Message:    message,
+		Data:       data,
+		Pagination: pagination,
 	}
 }
 
@@ -87,6 +95,7 @@ func SuccessAsync(jobID, status string, estimatedSeconds int) *SuccessResponse {
 func Error(code, message, traceID string, details ...ErrorIssue) *ErrorResponse {
 	return &ErrorResponse{
 		Success: false,
+		Status:  false,
 		Error: &ErrorDetail{
 			Code:      code,
 			Message:   message,
@@ -94,6 +103,8 @@ func Error(code, message, traceID string, details ...ErrorIssue) *ErrorResponse 
 			TraceID:   traceID,
 			Timestamp: time.Now().UTC().Format(time.RFC3339),
 		},
+		Message: message,
+		TraceID: traceID,
 	}
 }
 
@@ -115,156 +126,90 @@ func NewPagination(total, page, pageSize int) Pagination {
 	}
 }
 
-// Common Error Codes
+// ============================================================
+// Error Code Constants — Per Service
+// ============================================================
+
+// Zone B — Web Application (BFF)
 const (
-	// Zone B - Web Application (BFF)
-	BNYBBadRequest          = "B-NYB-400"
-	BNYBUnauthorized        = "B-NYB-401"
-	BNYBForbidden           = "B-NYB-403"
-	BNYBNotFound            = "B-NYB-404"
-	BNYBConflict            = "B-NYB-409"
-	BNYBValidationFailed    = "B-NYB-422"
-	BNYBTooManyRequests     = "B-NYB-429"
-	BNYBInternalServerError = "B-NYB-500"
-	BNYBServiceUnavailable  = "B-NYB-503"
-	BNYBGatewayTimeout      = "B-NYB-504"
+	BNYBBadRequest     = "B-NYB-400"
+	BNYBUnauthorized   = "B-NYB-401"
+	BNYBForbidden      = "B-NYB-403"
+	BNYBNotFound       = "B-NYB-404"
+	BNYBConflict       = "B-NYB-409"
+	BNYBValidation     = "B-NYB-422"
+	BNYBTooMany        = "B-NYB-429"
+	BNYBInternal       = "B-NYB-500"
+	BNYBUnavailable    = "B-NYB-503"
+	BNYBGatewayTimeout = "B-NYB-504"
 
-	// Zone C - Core Services
-	// C-AUT - Auth Service
-	CAUTBadRequest          = "C-AUT-400"
-	CAUTUnauthorized        = "C-AUT-401"
-	CAUTForbidden           = "C-AUT-403"
-	CAUTNotFound            = "C-AUT-404"
-	CAUTConflict            = "C-AUT-409"
-	CAUTValidationFailed    = "C-AUT-422"
-	CAUTTooManyRequests     = "C-AUT-429"
-	CAUTInternalServerError = "C-AUT-500"
-	CAUTServiceUnavailable  = "C-AUT-503"
-
-	// C-LST - Listing Service
-	CLSTBadRequest          = "C-LST-400"
-	CLSTUnauthorized        = "C-LST-401"
-	CLSTForbidden           = "C-LST-403"
-	CLSTNotFound            = "C-LST-404"
-	CLSTConflict            = "C-LST-409"
-	CLSTValidationFailed    = "C-LST-422"
-	CLSTTooManyRequests     = "C-LST-429"
-	CLSTInternalServerError = "C-LST-500"
-	CLSTServiceUnavailable  = "C-LST-503"
-
-	// C-MED - Media Service
-	CMEDBadRequest          = "C-MED-400"
-	CMEDUnauthorized        = "C-MED-401"
-	CMEDForbidden           = "C-MED-403"
-	CMEDNotFound            = "C-MED-404"
-	CMEDConflict            = "C-MED-409"
-	CMEDPayloadTooLarge     = "C-MED-413"
-	CMEDValidationFailed    = "C-MED-422"
-	CMEDTooManyRequests     = "C-MED-429"
-	CMEDInternalServerError = "C-MED-500"
-	CMEDServiceUnavailable  = "C-MED-503"
-
-	// C-SRC - Search Service
-	CSRCBadRequest          = "C-SRC-400"
-	CSRCUnauthorized        = "C-SRC-401"
-	CSRCForbidden           = "C-SRC-403"
-	CSRCNotFound            = "C-SRC-404"
-	CSRCValidationFailed    = "C-SRC-422"
-	CSRCTooManyRequests     = "C-SRC-429"
-	CSRCInternalServerError = "C-SRC-500"
-	CSRCServiceUnavailable  = "C-SRC-503"
-
-	// C-NOT - Notification Service
-	CNOTBadRequest          = "C-NOT-400"
-	CNOTUnauthorized        = "C-NOT-401"
-	CNOTForbidden           = "C-NOT-403"
-	CNOTNotFound            = "C-NOT-404"
-	CNOTValidationFailed    = "C-NOT-422"
-	CNOTTooManyRequests     = "C-NOT-429"
-	CNOTInternalServerError = "C-NOT-500"
-	CNOTServiceUnavailable  = "C-NOT-503"
-
-	// C-RPT - Report Service
-	CRPTBadRequest          = "C-RPT-400"
-	CRPTUnauthorized        = "C-RPT-401"
-	CRPTForbidden           = "C-RPT-403"
-	CRPTNotFound            = "C-RPT-404"
-	CRPTValidationFailed    = "C-RPT-422"
-	CRPTTooManyRequests     = "C-RPT-429"
-	CRPTInternalServerError = "C-RPT-500"
-	CRPTServiceUnavailable  = "C-RPT-503"
-
-	// Zone X - Integration Service
-	XINTBadRequest          = "X-INT-400"
-	XINTUnauthorized        = "X-INT-401"
-	XINTForbidden           = "X-INT-403"
-	XINTNotFound            = "X-INT-404"
-	XINTValidationFailed    = "X-INT-422"
-	XINTTooManyRequests     = "X-INT-429"
-	XINTInternalServerError = "X-INT-500"
-	XINTBadGateway          = "X-INT-502"
-	XINTServiceUnavailable  = "X-INT-503"
-	XINTGatewayTimeout      = "X-INT-504"
+	BCOBBadRequest     = "B-COB-400"
+	BCOBUnauthorized   = "B-COB-401"
+	BCOBForbidden      = "B-COB-403"
+	BCOBNotFound       = "B-COB-404"
+	BCOBInternal       = "B-COB-500"
+	BCOBUnavailable    = "B-COB-503"
+	BCOBGatewayTimeout = "B-COB-504"
 )
 
-// Helper functions for common errors
+// Zone C — Core Services
+const (
+	// C-AUT — Auth Service
+	CAUTBadRequest   = "C-AUT-400"
+	CAUTUnauthorized = "C-AUT-401"
+	CAUTForbidden    = "C-AUT-403"
+	CAUTNotFound     = "C-AUT-404"
+	CAUTConflict     = "C-AUT-409"
+	CAUTValidation   = "C-AUT-422"
+	CAUTInternal     = "C-AUT-500"
+	CAUTUnavailable  = "C-AUT-503"
 
-// BadRequest creates a 400 Bad Request error
-func BadRequest(code, message, traceID string, details ...ErrorIssue) *ErrorResponse {
-	return Error(code, message, traceID, details...)
-}
+	// C-LST — Listing Service
+	CLSTBadRequest   = "C-LST-400"
+	CLSTUnauthorized = "C-LST-401"
+	CLSTForbidden    = "C-LST-403"
+	CLSTNotFound     = "C-LST-404"
+	CLSTConflict     = "C-LST-409"
+	CLSTValidation   = "C-LST-422"
+	CLSTInternal     = "C-LST-500"
+	CLSTUnavailable  = "C-LST-503"
 
-// Unauthorized creates a 401 Unauthorized error
-func Unauthorized(code, message, traceID string, details ...ErrorIssue) *ErrorResponse {
-	return Error(code, message, traceID, details...)
-}
+	// C-MED — Media Service
+	CMEDBadRequest     = "C-MED-400"
+	CMEDNotFound       = "C-MED-404"
+	CMEDPayloadTooLarge = "C-MED-413"
+	CMEDUnsupportedMedia = "C-MED-415"
+	CMEDInternal       = "C-MED-500"
+	CMEDBadGateway     = "C-MED-502"
 
-// Forbidden creates a 403 Forbidden error
-func Forbidden(code, message, traceID string, details ...ErrorIssue) *ErrorResponse {
-	return Error(code, message, traceID, details...)
-}
+	// C-SRC — Search Service
+	CSRCBadRequest  = "C-SRC-400"
+	CSRCInternal    = "C-SRC-500"
+	CSRCUnavailable = "C-SRC-503"
 
-// NotFound creates a 404 Not Found error
-func NotFound(code, message, traceID string, details ...ErrorIssue) *ErrorResponse {
-	return Error(code, message, traceID, details...)
-}
+	// C-NOT — Notification Service
+	CNOTInternal = "C-NOT-500"
 
-// Conflict creates a 409 Conflict error
-func Conflict(code, message, traceID string, details ...ErrorIssue) *ErrorResponse {
-	return Error(code, message, traceID, details...)
-}
+	// C-RPT — Report Service
+	CRPTBadRequest = "C-RPT-400"
+	CRPTNotFound   = "C-RPT-404"
+	CRPTValidation = "C-RPT-422"
+	CRPTInternal   = "C-RPT-500"
 
-// PayloadTooLarge creates a 413 Payload Too Large error
-func PayloadTooLarge(code, message, traceID string, details ...ErrorIssue) *ErrorResponse {
-	return Error(code, message, traceID, details...)
-}
+	// C-INT — Integration Service
+	CINTBadRequest = "C-INT-400"
+	CINTInternal   = "C-INT-500"
+)
 
-// ValidationFailed creates a 422 Validation Failed error
-func ValidationFailed(code, message, traceID string, details ...ErrorIssue) *ErrorResponse {
-	return Error(code, message, traceID, details...)
-}
+// Zone X — External Integration
+const (
+	XINTBadGateway     = "X-INT-502"
+	XINTUnavailable    = "X-INT-503"
+	XINTGatewayTimeout = "X-INT-504"
+)
 
-// TooManyRequests creates a 429 Too Many Requests error
-func TooManyRequests(code, message, traceID string, details ...ErrorIssue) *ErrorResponse {
-	return Error(code, message, traceID, details...)
-}
-
-// InternalServerError creates a 500 Internal Server Error
-func InternalServerError(code, message, traceID string, details ...ErrorIssue) *ErrorResponse {
-	return Error(code, message, traceID, details...)
-}
-
-// BadGateway creates a 502 Bad Gateway error
-func BadGateway(code, message, traceID string, details ...ErrorIssue) *ErrorResponse {
-	return Error(code, message, traceID, details...)
-}
-
-// ServiceUnavailable creates a 503 Service Unavailable error
-func ServiceUnavailable(code, message, traceID string, details ...ErrorIssue) *ErrorResponse {
-	return Error(code, message, traceID, details...)
-}
-
-// GatewayTimeout creates a 504 Gateway Timeout error
-func GatewayTimeout(code, message, traceID string, details ...ErrorIssue) *ErrorResponse {
-	return Error(code, message, traceID, details...)
-}
+// Zone D — Worker / Job
+const (
+	DWRKBadRequest = "D-WRK-400"
+	DWRKInternal   = "D-WRK-500"
+)

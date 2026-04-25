@@ -1,3 +1,3 @@
-module github.com/kitti/go-common-response
+module github.com/kittithon-p/nayoo-go-common-response
 
 go 1.21
